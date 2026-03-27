@@ -28,10 +28,10 @@ echo "=== Starting services ==="
 ssh egov "cd /opt/ss-manager && docker compose up -d --build"
 
 echo "=== Setting up nginx ==="
-scp nginx/ss.chakshu.com.conf egov:/etc/nginx/sites-available/ss.chakshu.com
-ssh egov "ln -sf /etc/nginx/sites-available/ss.chakshu.com /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx"
+scp nginx/ss.chakshu.co.in.conf egov:/etc/nginx/sites-available/ss.chakshu.co.in
+ssh egov "ln -sf /etc/nginx/sites-available/ss.chakshu.co.in /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx"
 
 echo "=== Setting up SSL ==="
-ssh egov "certbot --nginx -d ss.chakshu.com --non-interactive --agree-tos --email admin@chakshu.com || echo 'SSL setup may need manual intervention'"
+ssh egov "certbot --nginx -d ss.chakshu.co.in --non-interactive --agree-tos --email admin@chakshu.com || echo 'SSL setup may need manual intervention'"
 
-echo "Deployed! Visit https://ss.chakshu.com"
+echo "Deployed! Visit https://ss.chakshu.co.in"
