@@ -29,5 +29,21 @@ services:
     volumes:
       - ./web/dist:/app/public
 
+  mcp:
+    build: ./mcp
+    ports:
+      - "127.0.0.1:3004:3004"
+    depends_on:
+      - minio
+    environment:
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      PUBLIC_URL_BASE: ${PUBLIC_URL_BASE}
+      MCP_PORT: 3004
+
 volumes:
   minio-data:
