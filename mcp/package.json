@@ -1,0 +1,16 @@
+{
+  "name": "ss-manager-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for screenshot management",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "ss-manager-mcp": "./index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "minio": "^8.0.2",
+    "dotenv": "^16.4.7",
+    "zod": "^3.23.0"
+  }
+}

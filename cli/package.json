@@ -1,0 +1,15 @@
+{
+  "name": "ss-manager-cli",
+  "version": "1.0.0",
+  "description": "CLI tool for managing screenshots via MinIO",
+  "type": "module",
+  "bin": {
+    "ss": "./index.js"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "minio": "^8.0.2",
+    "dotenv": "^16.4.7",
+    "clipboardy": "^4.0.0"
+  }
+}
