@@ -39,21 +39,12 @@ async function listObjects(limit = 20, search = null) {
   return new Promise((resolve, reject) => {
     const objects = [];
     const stream = minioClient.listObjectsV2(bucket, '', true);
-
     stream.on('data', (obj) => {
       if (obj.name) {
-        if (search && !obj.name.toLowerCase().includes(search.toLowerCase())) {
-          return;
-        }
-        objects.push({
-          name: obj.name,
-          size: obj.size,
-          lastModified: obj.lastModified,
-          url: buildUrl(obj.name),
-        });
+        if (search && !obj.name.toLowerCase().includes(search.toLowerCase())) return;
+        objects.push({ name: obj.name, size: obj.size, lastModified: obj.lastModified, url: buildUrl(obj.name) });
       }
     });
-
     stream.on('error', reject);
     stream.on('end', () => {
       objects.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
@@ -62,21 +53,18 @@ async function listObjects(limit = 20, search = null) {
   });
 }
 
-function registerTools(server) {
+function createMcpServer() {
+  const server = new McpServer({ name: 'ss-manager', version: '1.0.0' });
+
   server.tool(
     'list_screenshots',
-    'List recent screenshots from the screenshot manager. Returns name, URL, size, and last modified date.',
-    {
-      limit: z.number().default(20).describe('Maximum number of screenshots to return'),
-      search: z.string().optional().describe('Optional filename filter to search for'),
-    },
+    'List recent screenshots. Returns name, URL, size, and last modified date.',
+    { limit: z.number().default(20).describe('Max screenshots to return'), search: z.string().optional().describe('Filename filter') },
     async ({ limit, search }) => {
       try {
         const objects = await listObjects(limit, search || null);
         return { content: [{ type: 'text', text: JSON.stringify(objects, null, 2) }] };
-      } catch (err) {
-        return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
-      }
+      } catch (err) { return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true }; }
     }
   );
 
@@ -88,13 +76,9 @@ function registerTools(server) {
       try {
         const objects = await listObjects(1000);
         const match = objects.find((obj) => obj.name.toLowerCase().includes(name.toLowerCase()));
-        if (!match) {
-          return { content: [{ type: 'text', text: `No screenshot matching "${name}" found.` }], isError: true };
-        }
+        if (!match) return { content: [{ type: 'text', text: `No screenshot matching "${name}" found.` }], isError: true };
         return { content: [{ type: 'text', text: JSON.stringify({ name: match.name, url: match.url }, null, 2) }] };
-      } catch (err) {
-        return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
-      }
+      } catch (err) { return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true }; }
     }
   );
 
@@ -105,48 +89,37 @@ function registerTools(server) {
     async () => {
       try {
         const objects = await listObjects(1);
-        if (objects.length === 0) {
-          return { content: [{ type: 'text', text: 'No screenshots found.' }], isError: true };
-        }
+        if (objects.length === 0) return { content: [{ type: 'text', text: 'No screenshots found.' }], isError: true };
         return { content: [{ type: 'text', text: JSON.stringify(objects[0], null, 2) }] };
-      } catch (err) {
-        return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
-      }
+      } catch (err) { return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true }; }
     }
   );
 
   server.tool(
     'search_screenshots',
     'Search screenshots by name pattern. Returns matching screenshots with URLs.',
-    { query: z.string().describe('Search query to match against screenshot filenames') },
+    { query: z.string().describe('Search query for screenshot filenames') },
     async ({ query }) => {
       try {
         const objects = await listObjects(1000, query);
         return { content: [{ type: 'text', text: JSON.stringify(objects, null, 2) }] };
-      } catch (err) {
-        return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
-      }
+      } catch (err) { return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true }; }
     }
   );
+
+  return server;
 }
 
-// Track transports by session ID for stateful connections
-const transports = new Map();
-
+// Stateless HTTP server — new McpServer + transport per request (same pattern as DIGIT-MCP)
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${MCP_PORT}`);
 
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Mcp-Session-Id');
   res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -155,35 +128,9 @@ const httpServer = createServer(async (req, res) => {
   }
 
   if (url.pathname === '/mcp') {
-    // Check for existing session
-    const sessionId = req.headers['mcp-session-id'];
-
-    if (sessionId && transports.has(sessionId)) {
-      // Reuse existing transport for this session
-      const transport = transports.get(sessionId);
-      await transport.handleRequest(req, res);
-      return;
-    }
-
-    // New session — create new server + transport
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => crypto.randomUUID(),
-    });
-
-    transport.onclose = () => {
-      const sid = transport.sessionId;
-      if (sid) transports.delete(sid);
-    };
-
-    const mcpServer = new McpServer({ name: 'ss-manager', version: '1.0.0' });
-    registerTools(mcpServer);
-
-    await mcpServer.connect(transport);
-
-    if (transport.sessionId) {
-      transports.set(transport.sessionId, transport);
-    }
-
+    const server = createMcpServer();
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    await server.connect(transport);
     await transport.handleRequest(req, res);
     return;
   }
@@ -194,5 +141,4 @@ const httpServer = createServer(async (req, res) => {
 
 httpServer.listen(parseInt(MCP_PORT, 10), '0.0.0.0', () => {
   console.log(`ss-manager MCP server listening on port ${MCP_PORT}`);
-  console.log(`MCP endpoint: http://0.0.0.0:${MCP_PORT}/mcp`);
 });
